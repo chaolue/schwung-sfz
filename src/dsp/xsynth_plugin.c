@@ -105,6 +105,12 @@ extern int           xshim_load_status(const XSynthHandle*);
 extern void          xshim_load_cancel(XSynthHandle*);
 extern int           xshim_load_apply(XSynthHandle*);
 extern void          xshim_load_clear_status(XSynthHandle*);
+/* MOVE FORK / 2026-09-19: labelled ARIA <control> CC controls of the
+ * loaded SFZ (`label_cc<N>` + `set_cc<N>`/`set_hdcc<N>`). */
+extern int           xshim_cc_control_count(const XSynthHandle*);
+extern int           xshim_cc_control_get(const XSynthHandle*, int index,
+                                          uint8_t *out_cc, uint8_t *out_initial,
+                                          char *out_label, size_t label_len);
 #define XSHIM_LOAD_IDLE      0
 #define XSHIM_LOAD_LOADING   1
 #define XSHIM_LOAD_READY     2
@@ -216,6 +222,87 @@ typedef struct {
     float filter_reso;
     float *render_buf;             /* interleaved L/R/L/R..., 2 * frames */
 } xsynth_instance_t;
+/* Knobs shown on the Move's encoder row at once; module.json declares
+ * knob_0..knob_7. Controls beyond this page onto further tabs. */
+#define SFZ_KNOBS_PER_TAB 8
+
+static void plugin_log(const char *msg);
+
+
+
+/* MOVE FORK / 2026-09-19: surface a plain SFZ's own control surface on
+ * the knob row.
+ *
+ * ARIA libraries declare their mixer in the `<control>` block:
+ * `label_cc<N>=<name>` names a CC and `set_cc<N>` / `set_hdcc<N>` gives
+ * its start position. Wilkinson Naked Drums, for instance, labels CC20
+ * "KickIn" ... CC31 "Ride" and CC41-46 as the mic buses, each driving an
+ * `amplitude_oncc<N>` fader. Before this, only DecentSampler presets got
+ * knobs (the converter enumerated `<labeled-knob>` elements) and every
+ * .sfz left the encoder row empty.
+ *
+ * We reuse the DS knob array wholesale: same `ds_knob_t`, same
+ * `knob_N` set_param path, same tab paging. The only difference is that
+ * `cc_number` is the library's real CC rather than a synthetic 102-117
+ * one, and the range is always normalized 0..1.
+ *
+ * Only called when the converter left `knob_count` at 0, so a
+ * DecentSampler preset's authored knobs always win.
+ */
+static void populate_sfz_cc_knobs(xsynth_instance_t *inst)
+{
+    if (!inst || !inst->synth) return;
+    if (inst->knob_count > 0) return;  /* DS knobs already claimed the row */
+
+    int n = xshim_cc_control_count(inst->synth);
+    if (n <= 0) return;
+    if (n > DS_MAX_KNOBS) n = DS_MAX_KNOBS;
+
+    int count = 0;
+    for (int i = 0; i < n; i++) {
+        uint8_t cc = 0, initial = 0;
+        char label[32];
+        label[0] = '\0';
+        if (xshim_cc_control_get(inst->synth, i, &cc, &initial,
+                                 label, sizeof(label)) != 0) {
+            continue;
+        }
+        ds_knob_t *k = &inst->knobs[count];
+        memset(k, 0, sizeof(*k));
+        snprintf(k->key, sizeof(k->key), "knob_%d", count);
+        if (label[0]) {
+            snprintf(k->label, sizeof(k->label), "%s", label);
+        } else {
+            snprintf(k->label, sizeof(k->label), "CC%d", (int)cc);
+        }
+        k->min_value = 0.0;
+        k->max_value = 1.0;
+        k->default_value = (double)initial / 127.0;
+        k->cc_number = (int)cc;
+        k->live = 1;                      /* real CC, sampled per block */
+        k->tab_idx = count / SFZ_KNOBS_PER_TAB;
+        inst->knob_current[count] = k->default_value;
+        count++;
+    }
+    inst->knob_count = count;
+
+    /* No tabs. Paging the encoder row would need the row's key list to
+     * change per tab, but the host reads that ("knobs" in module.json)
+     * from disk once — a plugin cannot repaint it. A tab dropdown here
+     * would just be a control that does nothing visible. The first 8
+     * controls take the encoders; the rest are reached by assigning them
+     * from the chain's knob-mapping picker, which lists every key we
+     * publish in chain_params. */
+    inst->tab_count = 0;
+    inst->current_tab = 0;
+
+    char msg[160];
+    snprintf(msg, sizeof(msg),
+             "SFZ CC controls: %d knobs published (knob_0..knob_%d)",
+             count, count - 1);
+    plugin_log(msg);
+}
+
 
 /* MOVE FORK / 2026-05-18: async log SPSC ring. plugin_log() is called
  * from the audio thread (render_block path) with a 256-byte string;
@@ -1351,9 +1438,16 @@ static int v2_get_param(void *instance, const char *key, char *buf, int buf_len)
          * symptom as the FUNVERB miss earlier in this branch). The
          * encoder row hardware limit only shows the first ~8 at once,
          * but the params menu walks the full list. */
+        /* MOVE FORK / 2026-09-19: emit EVERY knob under its own global
+         * key. The encoder row only ever binds knob_0..knob_7 (the Move
+         * has eight encoders, and module.json's "knobs" array is read
+         * from disk so the row cannot be repainted per tab), but the
+         * chain's knob-MAPPING picker builds its list from these keys —
+         * so anything not emitted here is unreachable, permanently.
+         * Declaring all of them is what makes a 26-control library fully
+         * assignable. */
         for (int i = 0; i < inst->knob_count; i++) {
             ds_knob_t *k = &inst->knobs[i];
-            if (inst->tab_count > 1 && k->tab_idx != inst->current_tab) continue;
             double t = (k->max_value != k->min_value)
                 ? (inst->knob_current[i] - k->min_value) /
                   (k->max_value - k->min_value)
@@ -1560,7 +1654,6 @@ static int v2_get_param(void *instance, const char *key, char *buf, int buf_len)
          * menu clean. */
         for (int i = 0; i < inst->knob_count; i++) {
             ds_knob_t *k = &inst->knobs[i];
-            if (inst->tab_count > 1 && k->tab_idx != inst->current_tab) continue;
             written += snprintf(buf + written, buf_len - written,
                 ",{\"key\":\"%s\",\"label\":\"%s\"}",
                 k->key, k->label);
@@ -1613,6 +1706,7 @@ static void v2_render_block(void *instance, int16_t *out_interleaved_lr, int fra
         return;
     } else if (load_st == XSHIM_LOAD_READY) {
         xshim_load_apply(inst->synth);
+        populate_sfz_cc_knobs(inst);
         inst->is_loading = 0;
         /* MOVE FORK / 2026-05-18: per-preset polyphony default keyed to
          * region stacking. Move's audio engine sustains ~60 active voices
