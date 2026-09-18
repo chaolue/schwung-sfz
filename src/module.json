@@ -3,7 +3,7 @@
   "name": "Multisampler",
   "abbrev": "MSP",
   "version": "0.6.5",
-  "description": "Multisample instrument player for SFZ and DecentSampler libraries — pianos, keys, drums, orchestral, and more.",
+  "description": "Multisample instrument player for SFZ and DecentSampler libraries \u2014 pianos, keys, drums, orchestral, and more.",
   "author": "charlesvestal",
   "license": "LGPL-3.0",
   "ui": "ui.js",
@@ -70,6 +70,294 @@
               "min": 0,
               "max": 7,
               "default": 0
+            },
+            {
+              "key": "knob_0",
+              "label": "Knob 1",
+              "type": "float",
+              "min": 0,
+              "max": 1,
+              "default": 0.5,
+              "step": 0.02
+            },
+            {
+              "key": "knob_1",
+              "label": "Knob 2",
+              "type": "float",
+              "min": 0,
+              "max": 1,
+              "default": 0.5,
+              "step": 0.02
+            },
+            {
+              "key": "knob_2",
+              "label": "Knob 3",
+              "type": "float",
+              "min": 0,
+              "max": 1,
+              "default": 0.5,
+              "step": 0.02
+            },
+            {
+              "key": "knob_3",
+              "label": "Knob 4",
+              "type": "float",
+              "min": 0,
+              "max": 1,
+              "default": 0.5,
+              "step": 0.02
+            },
+            {
+              "key": "knob_4",
+              "label": "Knob 5",
+              "type": "float",
+              "min": 0,
+              "max": 1,
+              "default": 0.5,
+              "step": 0.02
+            },
+            {
+              "key": "knob_5",
+              "label": "Knob 6",
+              "type": "float",
+              "min": 0,
+              "max": 1,
+              "default": 0.5,
+              "step": 0.02
+            },
+            {
+              "key": "knob_6",
+              "label": "Knob 7",
+              "type": "float",
+              "min": 0,
+              "max": 1,
+              "default": 0.5,
+              "step": 0.02
+            },
+            {
+              "key": "knob_7",
+              "label": "Knob 8",
+              "type": "float",
+              "min": 0,
+              "max": 1,
+              "default": 0.5,
+              "step": 0.02
+            },
+            {
+              "key": "knob_8",
+              "label": "Knob 9",
+              "type": "float",
+              "min": 0,
+              "max": 1,
+              "default": 0.5,
+              "step": 0.02
+            },
+            {
+              "key": "knob_9",
+              "label": "Knob 10",
+              "type": "float",
+              "min": 0,
+              "max": 1,
+              "default": 0.5,
+              "step": 0.02
+            },
+            {
+              "key": "knob_10",
+              "label": "Knob 11",
+              "type": "float",
+              "min": 0,
+              "max": 1,
+              "default": 0.5,
+              "step": 0.02
+            },
+            {
+              "key": "knob_11",
+              "label": "Knob 12",
+              "type": "float",
+              "min": 0,
+              "max": 1,
+              "default": 0.5,
+              "step": 0.02
+            },
+            {
+              "key": "knob_12",
+              "label": "Knob 13",
+              "type": "float",
+              "min": 0,
+              "max": 1,
+              "default": 0.5,
+              "step": 0.02
+            },
+            {
+              "key": "knob_13",
+              "label": "Knob 14",
+              "type": "float",
+              "min": 0,
+              "max": 1,
+              "default": 0.5,
+              "step": 0.02
+            },
+            {
+              "key": "knob_14",
+              "label": "Knob 15",
+              "type": "float",
+              "min": 0,
+              "max": 1,
+              "default": 0.5,
+              "step": 0.02
+            },
+            {
+              "key": "knob_15",
+              "label": "Knob 16",
+              "type": "float",
+              "min": 0,
+              "max": 1,
+              "default": 0.5,
+              "step": 0.02
+            },
+            {
+              "key": "knob_16",
+              "label": "Knob 17",
+              "type": "float",
+              "min": 0,
+              "max": 1,
+              "default": 0.5,
+              "step": 0.02
+            },
+            {
+              "key": "knob_17",
+              "label": "Knob 18",
+              "type": "float",
+              "min": 0,
+              "max": 1,
+              "default": 0.5,
+              "step": 0.02
+            },
+            {
+              "key": "knob_18",
+              "label": "Knob 19",
+              "type": "float",
+              "min": 0,
+              "max": 1,
+              "default": 0.5,
+              "step": 0.02
+            },
+            {
+              "key": "knob_19",
+              "label": "Knob 20",
+              "type": "float",
+              "min": 0,
+              "max": 1,
+              "default": 0.5,
+              "step": 0.02
+            },
+            {
+              "key": "knob_20",
+              "label": "Knob 21",
+              "type": "float",
+              "min": 0,
+              "max": 1,
+              "default": 0.5,
+              "step": 0.02
+            },
+            {
+              "key": "knob_21",
+              "label": "Knob 22",
+              "type": "float",
+              "min": 0,
+              "max": 1,
+              "default": 0.5,
+              "step": 0.02
+            },
+            {
+              "key": "knob_22",
+              "label": "Knob 23",
+              "type": "float",
+              "min": 0,
+              "max": 1,
+              "default": 0.5,
+              "step": 0.02
+            },
+            {
+              "key": "knob_23",
+              "label": "Knob 24",
+              "type": "float",
+              "min": 0,
+              "max": 1,
+              "default": 0.5,
+              "step": 0.02
+            },
+            {
+              "key": "knob_24",
+              "label": "Knob 25",
+              "type": "float",
+              "min": 0,
+              "max": 1,
+              "default": 0.5,
+              "step": 0.02
+            },
+            {
+              "key": "knob_25",
+              "label": "Knob 26",
+              "type": "float",
+              "min": 0,
+              "max": 1,
+              "default": 0.5,
+              "step": 0.02
+            },
+            {
+              "key": "knob_26",
+              "label": "Knob 27",
+              "type": "float",
+              "min": 0,
+              "max": 1,
+              "default": 0.5,
+              "step": 0.02
+            },
+            {
+              "key": "knob_27",
+              "label": "Knob 28",
+              "type": "float",
+              "min": 0,
+              "max": 1,
+              "default": 0.5,
+              "step": 0.02
+            },
+            {
+              "key": "knob_28",
+              "label": "Knob 29",
+              "type": "float",
+              "min": 0,
+              "max": 1,
+              "default": 0.5,
+              "step": 0.02
+            },
+            {
+              "key": "knob_29",
+              "label": "Knob 30",
+              "type": "float",
+              "min": 0,
+              "max": 1,
+              "default": 0.5,
+              "step": 0.02
+            },
+            {
+              "key": "knob_30",
+              "label": "Knob 31",
+              "type": "float",
+              "min": 0,
+              "max": 1,
+              "default": 0.5,
+              "step": 0.02
+            },
+            {
+              "key": "knob_31",
+              "label": "Knob 32",
+              "type": "float",
+              "min": 0,
+              "max": 1,
+              "default": 0.5,
+              "step": 0.02
             }
           ],
           "knobs": [
