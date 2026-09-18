@@ -102,6 +102,10 @@ struct LoadedSf {
     peak: f32,
     stacking: u32,
     polyphony: u32,
+    /// `<control>` block `(cc, initial)` defaults, sent before the swap.
+    cc_seed: Vec<(u8, u8)>,
+    /// The labelled controls, `(cc, initial, label)`, for the knob surface.
+    cc_labelled: Vec<(u8, u8, String)>,
 }
 
 pub struct XSynthHandle {
@@ -130,6 +134,14 @@ pub struct XSynthHandle {
     /// MOVE FORK / 2026-05-19: SFZ-declared min `polyphony=N`. 0 when
     /// no region declared one.
     declared_polyphony: AtomicU32,
+    /// MOVE FORK / 2026-09-19: the currently-loaded SFZ's LABELLED ARIA
+    /// `<control>` CC controls, as (cc, initial 0..127, label). The C
+    /// plugin enumerates these after a load and turns them into the
+    /// module's knob row, giving plain SFZ libraries the per-control
+    /// surface that previously only DecentSampler presets got.
+    /// Unlabelled CCs are excluded — they're internal plumbing, not
+    /// something an author meant to expose.
+    cc_controls: Mutex<Vec<(u8, u8, String)>>,
 }
 
 /* Install once: panic hook that writes the panic message + a short backtrace
@@ -205,6 +217,7 @@ pub unsafe extern "C" fn xshim_create(sample_rate: u32, channels: u32) -> *mut X
             estimated_voice_peak: AtomicU32::new(0),
             max_region_stacking: AtomicU32::new(1),
             declared_polyphony: AtomicU32::new(0),
+            cc_controls: Mutex::new(Vec::new()),
         }))
     }))
     .unwrap_or(ptr::null_mut())
@@ -268,6 +281,32 @@ pub unsafe extern "C" fn xshim_load_sfz(handle: *mut XSynthHandle, path: *const 
                 return -1;
             }
         };
+        // MOVE FORK / 2026-09-19: seed the channel's live CC array from the
+        // SFZ `<control>` block's `set_cc<N>` / `set_hdcc<N>` defaults
+        // before the soundfont goes live, so the first note already sees
+        // the author's intended fader positions.
+        //
+        // xsynth's CC array starts at all zeros, so every `_oncc` modulator
+        // reads 0 until a MIDI CC happens to arrive. For `amplitude_oncc`
+        // that means silence: Wilkinson Naked Drums puts a global
+        // `amplitude_oncc7=100` with `set_cc7=100` on every preset, so
+        // without this the whole library plays nothing.
+        for c in sf.cc_controls() {
+            h.group.send_event(SynthEvent::Channel(
+                0,
+                ChannelEvent::Audio(ChannelAudioEvent::Control(ControlEvent::Raw(
+                    c.cc, c.initial,
+                ))),
+            ));
+        }
+        if let Ok(mut slot) = h.cc_controls.lock() {
+            *slot = sf
+                .cc_controls()
+                .iter()
+                .filter(|c| c.label.is_some())
+                .map(|c| (c.cc, c.initial, c.label.clone().unwrap_or_default()))
+                .collect();
+        }
         let arc: Arc<dyn SoundfontBase> = Arc::new(sf);
         // MOVE FORK: target channel 0 only. The plugin's MIDI routing
         // sends everything to channel 0 (see xshim_note_on / xshim_cc
@@ -472,6 +511,49 @@ pub unsafe extern "C" fn xshim_fine_tune(handle: *mut XSynthHandle, ch: u8, cent
     }));
 }
 
+/// MOVE FORK / 2026-09-19: number of labelled ARIA `<control>` CC
+/// controls in the currently-loaded SFZ. 0 for SF2, for DecentSampler
+/// (its knobs come from the converter instead), and for SFZ files with
+/// no `label_cc<N>` opcodes.
+#[no_mangle]
+pub unsafe extern "C" fn xshim_cc_control_count(handle: *const XSynthHandle) -> c_int {
+    if handle.is_null() { return 0; }
+    let h = &*handle;
+    h.cc_controls.lock().map(|v| v.len() as c_int).unwrap_or(0)
+}
+
+/// MOVE FORK / 2026-09-19: read one labelled CC control by index.
+/// Writes the CC number to `out_cc`, its 0..127 initial value to
+/// `out_initial`, and the label into `out_label` (NUL-terminated,
+/// truncated to `label_len`). Returns 0 on success, -1 on a bad index
+/// or null handle. Any out pointer may be null to skip that field.
+#[no_mangle]
+pub unsafe extern "C" fn xshim_cc_control_get(
+    handle: *const XSynthHandle,
+    index: c_int,
+    out_cc: *mut u8,
+    out_initial: *mut u8,
+    out_label: *mut c_char,
+    label_len: usize,
+) -> c_int {
+    if handle.is_null() || index < 0 { return -1; }
+    let h = &*handle;
+    let Ok(list) = h.cc_controls.lock() else { return -1; };
+    let Some((cc, initial, label)) = list.get(index as usize) else { return -1; };
+    if !out_cc.is_null() { *out_cc = *cc; }
+    if !out_initial.is_null() { *out_initial = *initial; }
+    if !out_label.is_null() && label_len > 0 {
+        // Truncate on a char boundary so we never split a UTF-8
+        // sequence, then NUL-terminate within the caller's buffer.
+        let mut end = label.len().min(label_len - 1);
+        while end > 0 && !label.is_char_boundary(end) { end -= 1; }
+        let bytes = &label.as_bytes()[..end];
+        std::ptr::copy_nonoverlapping(bytes.as_ptr(), out_label as *mut u8, end);
+        *out_label.add(end) = 0;
+    }
+    0
+}
+
 #[no_mangle]
 pub unsafe extern "C" fn xshim_all_notes_off(handle: *mut XSynthHandle) {
     if handle.is_null() { return; }
@@ -643,6 +725,12 @@ pub unsafe extern "C" fn xshim_load_sfz_async(handle: *mut XSynthHandle, path: *
                     let peak = sf.estimated_voice_peak();
                     let stacking = sf.max_region_stacking();
                     let polyphony = sf.declared_polyphony();
+                    let cc_seed = sf.cc_controls().iter().map(|c| (c.cc, c.initial)).collect();
+                    let cc_labelled = sf
+                        .cc_controls()
+                        .iter()
+                        .filter_map(|c| c.label.clone().map(|l| (c.cc, c.initial, l)))
+                        .collect();
                     let arc: Arc<dyn SoundfontBase> = Arc::new(sf);
                     // Build the spawner matrix HERE, for the program the
                     // channel has (this player never changes it); the apply
@@ -652,7 +740,9 @@ pub unsafe extern "C" fn xshim_load_sfz_async(handle: *mut XSynthHandle, path: *
                     let matrix = build_spawner_matrix(std::slice::from_ref(&arc), program);
                     let prebuilt = PrebuiltMatrix::new(matrix, program, retired_t.clone());
                     *result_t.lock().unwrap() =
-                        Some(LoadedSf { sf: arc, prebuilt, peak, stacking, polyphony });
+                        Some(LoadedSf {
+                            sf: arc, prebuilt, peak, stacking, polyphony, cc_seed, cc_labelled,
+                        });
                     status_t.store(STATUS_READY, Ordering::Release);
                 }
                 Ok(Err(e)) => {
@@ -720,6 +810,27 @@ pub unsafe extern "C" fn xshim_load_apply(handle: *mut XSynthHandle) -> c_int {
     h.estimated_voice_peak.store(loaded.peak.to_bits(), Ordering::Release);
     h.max_region_stacking.store(loaded.stacking, Ordering::Release);
     h.declared_polyphony.store(loaded.polyphony, Ordering::Release);
+    // MOVE FORK / 2026-09-19: seed the channel's live CC array from the
+    // SFZ `<control>` block's `set_cc<N>` / `set_hdcc<N>` defaults
+    // before the soundfont goes live, so the first note already sees
+    // the author's intended fader positions.
+    //
+    // xsynth's CC array starts at all zeros, so every `_oncc` modulator
+    // reads 0 until a MIDI CC happens to arrive. For `amplitude_oncc`
+    // that means silence: Wilkinson Naked Drums puts a global
+    // `amplitude_oncc7=100` with `set_cc7=100` on every preset, so
+    // without this the whole library plays nothing.
+    for &(cc, initial) in &loaded.cc_seed {
+        h.group.send_event(SynthEvent::Channel(
+            0,
+            ChannelEvent::Audio(ChannelAudioEvent::Control(ControlEvent::Raw(cc, initial))),
+        ));
+    }
+    // MOVE FORK / 2026-09-19: publish the labelled controls (snapshotted
+    // by the worker) so the C plugin can enumerate them as knobs.
+    if let Ok(mut slot) = h.cc_controls.lock() {
+        *slot = loaded.cc_labelled;
+    }
     // MOVE FORK: channel 0 only — broadcast forces rebuild_matrix on
     // all 16 idle channels which spikes audio thread to ~94 ms.
     // MOVE FORK / 2026-10-03: with the matrix PREBUILT by the worker, so
