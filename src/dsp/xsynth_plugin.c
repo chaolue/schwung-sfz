@@ -1626,8 +1626,28 @@ static int v2_get_param(void *instance, const char *key, char *buf, int buf_len)
                                 "%s\"knob_%d\"", (i ? "," : ""), i);
         }
         written += snprintf(buf + written, buf_len - written,
-            "],\"params\":["
-                "{\"key\":\"octave_transpose\",\"label\":\"Octave\"},"
+            "],\"params\":[");
+        /* MOVE FORK / 2026-09-19: the instrument's OWN controls lead the
+         * params list, and the module-wide ones follow.
+         *
+         * The host plans pages from this array: the level's `knobs[]`
+         * becomes page 1, then it walks `params[]` in order, emitting the
+         * keys not already placed as continuation pages (see planPages /
+         * page_plan.mjs). With the module-wide params listed first, a
+         * library's controls 9+ were pushed behind Octave/Gain/Polyphony
+         * and the envelope and filter trims — so a 26-control drum kit
+         * read as: page 1 knobs 1-8, page 2 module params, page 3 filter
+         * trims then knobs 9-13. Emitting the knobs first keeps a
+         * library's own mixer contiguous: knobs 9-16 land on page 2,
+         * 17-24 on page 3, and the module-wide params follow them. */
+        for (int i = 0; i < inst->knob_count; i++) {
+            ds_knob_t *k = &inst->knobs[i];
+            written += snprintf(buf + written, buf_len - written,
+                "%s{\"key\":\"%s\",\"label\":\"%s\"}",
+                i ? "," : "", k->key, k->label);
+        }
+        written += snprintf(buf + written, buf_len - written,
+                "%s{\"key\":\"octave_transpose\",\"label\":\"Octave\"},"
                 "{\"key\":\"gain\",\"label\":\"Gain\"},"
                 "{\"key\":\"voices\",\"label\":\"Polyphony\"},"
                 "{\"key\":\"attack\",\"label\":\"Atk +/-\"},"
@@ -1637,7 +1657,8 @@ static int v2_get_param(void *instance, const char *key, char *buf, int buf_len)
                 "{\"key\":\"tune\",\"label\":\"Tune +/-\"},"
                 "{\"key\":\"cutoff\",\"label\":\"Cutoff +/-\"},"
                 "{\"key\":\"reso\",\"label\":\"Reso +/-\"},"
-                "{\"key\":\"knob_preset\",\"label\":\"Knob Preset\"}");
+                "{\"key\":\"knob_preset\",\"label\":\"Knob Preset\"}",
+                inst->knob_count ? "," : "");
         /* The host caches ui_hierarchy at module-load and never
          * re-queries it across preset switches, while chain_params
          * IS re-queried per preset. Emit ALL possible knob slots
@@ -1652,12 +1673,7 @@ static int v2_get_param(void *instance, const char *key, char *buf, int buf_len)
          * changes within the menu (added 2026-05-15) so emitting only
          * the knobs that exist in the current preset/tab keeps the
          * menu clean. */
-        for (int i = 0; i < inst->knob_count; i++) {
-            ds_knob_t *k = &inst->knobs[i];
-            written += snprintf(buf + written, buf_len - written,
-                ",{\"key\":\"%s\",\"label\":\"%s\"}",
-                k->key, k->label);
-        }
+
         written += snprintf(buf + written, buf_len - written,
             ",{\"level\":\"jump\",\"label\":\"Jump To Library\"}"
             "]},"
