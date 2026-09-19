@@ -3,7 +3,7 @@
  * and print get_param("chain_params"). Verifies what the module actually
  * publishes to the host without needing the Move's UI.
  *
- * Usage: ./param_dump <dsp.so> <module_dir> <preset_index>
+ * Usage: ./param_dump <dsp.so> <module_dir> <preset|-list> [param_key]
  */
 #include <stdio.h>
 #include <stdlib.h>
@@ -110,9 +110,10 @@ int main(int argc, char **argv) {
     }
     free(probe); free(list);
 
+    const char *want = (argc >= 5) ? argv[4] : "chain_params";
     char *buf = malloc(600000);
-    int n = api->get_param(inst, "chain_params", buf, 600000);
-    printf("chain_params (%d bytes):\n%s\n", n, n > 0 ? buf : "(empty)");
+    int n = api->get_param(inst, want, buf, 600000);
+    printf("%s (%d bytes):\n%s\n", want, n, n > 0 ? buf : "(empty)");
     free(buf);
     api->destroy_instance(inst);
     return 0;
